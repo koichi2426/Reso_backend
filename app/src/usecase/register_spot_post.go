@@ -1,21 +1,26 @@
 package usecase
 
 import (
-	"context"
-	"time"
 	"app/src/domain/entities"
-	"app/src/domain/services" // auth_domain_service.go を利用するために追加
+	"app/src/domain/services"
+	"context"
+	"errors"
+	"fmt"
+	"time"
 )
 
+// エラー定義：コントローラー層で 409 Conflict を返すためのトリガーになります
+var ErrSpotAlreadyExists = errors.New("conflict: spot already exists at this location")
+
 type RegisterSpotPostInput struct {
-	Token     string // トークンを受け取るように変更
+	Token     string
 	Username  string
 	SpotName  string
 	Latitude  float64
 	Longitude float64
 	ImageURL  string
 	Caption   string
-	Overwrite bool
+	Overwrite bool // 上書き許容フラグ
 }
 
 type RegisterSpotPostOutput struct {
@@ -35,14 +40,14 @@ type registerSpotPostInteractor struct {
 	presenter   RegisterSpotPostPresenter
 	spotRepo    entities.SpotRepository
 	postRepo    entities.PostRepository
-	authService services.AuthDomainService // 認証サービスを追加
+	authService services.AuthDomainService
 }
 
 func NewRegisterSpotPostInteractor(
 	p RegisterSpotPostPresenter,
 	s entities.SpotRepository,
 	r entities.PostRepository,
-	a services.AuthDomainService, // コンストラクタに認証サービスを追加
+	a services.AuthDomainService,
 ) RegisterSpotPostUseCase {
 	return &registerSpotPostInteractor{
 		presenter:   p,
@@ -54,10 +59,9 @@ func NewRegisterSpotPostInteractor(
 
 func (i *registerSpotPostInteractor) Execute(ctx context.Context, input RegisterSpotPostInput) (*RegisterSpotPostOutput, error) {
 	// 1. ユーザーの特定（認証）
-	// input.Token から user オブジェクトを特定
 	user, err := i.authService.VerifyToken(ctx, input.Token)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("auth error: %w", err)
 	}
 
 	// 2. 座標による同一店舗の特定
@@ -67,18 +71,21 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 		input.Longitude,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("repository error: %w", err)
 	}
 
 	var targetSpot *entities.Spot
 
-	// --- 【理想の挙動への変更】 ---
-	// 既存店舗がある場合は、エラーを返さず自動的にその店舗を選択する
+	// --- 【修正ポイント：Overwriteフラグの検証ロジック】 ---
 	if existingSpot != nil {
+		// すでに店舗が存在し、上書きが未承認（false）の場合はエラーを返す
+		if !input.Overwrite {
+			return nil, ErrSpotAlreadyExists
+		}
+		// 上書き承認済みの場合は、既存の Spot をターゲットにする
 		targetSpot = existingSpot
 	} else {
-		// 【同一地点なし】新規 Spot を生成・保存
-		// user.ID.Value() で int 型を取り出す
+		// 【新規登録】同一地点に店舗なし
 		newSpot, err := entities.NewSpot(
 			0,
 			input.SpotName,
@@ -87,17 +94,16 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 			user.ID.Value(),
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("entity creation error: %w", err)
 		}
 
 		targetSpot, err = i.spotRepo.Create(newSpot)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("spot storage error: %w", err)
 		}
 	}
 
 	// 3. Post（投稿）の生成
-	// user.ID.Value() と user.Username.String() を使用して型を合わせる
 	post, err := entities.NewPost(
 		0,
 		user.ID.Value(),
@@ -108,15 +114,15 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 		time.Now(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("post creation error: %w", err)
 	}
 
 	// 4. Post の永続化
 	createdPost, err := i.postRepo.Create(post)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("post storage error: %w", err)
 	}
 
-	// 5. 出力整形
+	// 5. 出力整形（Presenter経由でレスポンス用構造体に変換）
 	return i.presenter.Output(targetSpot, createdPost), nil
 }
