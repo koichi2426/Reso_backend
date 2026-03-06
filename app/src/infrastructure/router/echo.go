@@ -30,34 +30,19 @@ func InitRoutes(e *echo.Echo, db *sql.DB) {
 	// 2. プレゼンターの初期化
 	authLoginPresenter := presenter.NewAuthLoginPresenter()
 	userSignupPresenter := presenter.NewUserSignupPresenter()
-	listMySpotsPresenter := presenter.NewListMySpotsPresenter()
 	registerSpotPostPresenter := presenter.NewRegisterSpotPostPresenter()
 	distillRecommendationPresenter := presenter.NewDistillRecommendationPresenter()
 
 	// 3. ユースケースの初期化
 	authLoginUsecase := usecase.NewAuthLoginInteractor(authLoginPresenter, userRepo, authService)
 	userSignupUsecase := usecase.NewUserSignupInteractor(userSignupPresenter, userRepo, authService)
-	
-	// 【修正】第4引数に authService を追加
 	registerSpotUsecase := usecase.NewRegisterSpotPostInteractor(registerSpotPostPresenter, spotRepo, postRepo, authService)
-	
-	// 【修正】authService を追加し、トークンからユーザーを特定できるようにします
-	listMySpotsUsecase := usecase.NewListMySpotsInteractor(listMySpotsPresenter, spotRepo, postRepo, authService)
-	
-	distillRecommendationUsecase := usecase.NewDistillRecommendationInteractor(
-		distillRecommendationPresenter, 
-		recommendationService, 
-		authService,
-	)
+	distillRecommendationUsecase := usecase.NewDistillRecommendationInteractor(distillRecommendationPresenter, recommendationService, authService)
 
 	// 4. コントローラーの初期化
 	authLoginController := controller.NewAuthLoginController(authLoginUsecase)
 	userSignupController := controller.NewUserSignupController(userSignupUsecase)
-	
-	// 【修正】コントローラーはユースケースにトークンを渡すだけにするので、authService の注入は不要に
 	registerSpotPostController := controller.NewRegisterSpotPostController(registerSpotUsecase)
-	
-	listMySpotsController := controller.NewListMySpotsController(listMySpotsUsecase)
 	distillRecommendationController := controller.NewDistillRecommendationController(distillRecommendationUsecase)
 
 	// 5. ルーティング定義
@@ -68,7 +53,6 @@ func InitRoutes(e *echo.Echo, db *sql.DB) {
 
 	// PUT メソッドで定義された「情報の蒸留」エンドポイント
 	v1.PUT("/mesh/spots", registerSpotPostController.Execute)
-	v1.GET("/users/me/spots", listMySpotsController.Execute)
 	v1.GET("/recommendation/distill", distillRecommendationController.Execute)
 
 	e.GET("/health", func(c echo.Context) error {
