@@ -1,14 +1,18 @@
 package usecase
 
 import (
-	"context"
-	"time"
 	"app/src/domain/entities"
-	"app/src/domain/services" // auth_domain_service.go を利用するために追加
+	"app/src/domain/services"
+	"context"
+	"errors"
+	"fmt"
+	"time"
 )
 
+var ErrSpotAlreadyExists = errors.New("conflict: spot already exists at this location")
+
 type RegisterSpotPostInput struct {
-	Token     string // トークンを受け取るように変更
+	Token     string
 	Username  string
 	SpotName  string
 	Latitude  float64
@@ -18,9 +22,11 @@ type RegisterSpotPostInput struct {
 	Overwrite bool
 }
 
+// MeshID をレスポンスに含めるように拡張
 type RegisterSpotPostOutput struct {
 	SpotID int
 	PostID int
+	MeshID string // 👈 追加
 }
 
 type RegisterSpotPostPresenter interface {
@@ -35,14 +41,14 @@ type registerSpotPostInteractor struct {
 	presenter   RegisterSpotPostPresenter
 	spotRepo    entities.SpotRepository
 	postRepo    entities.PostRepository
-	authService services.AuthDomainService // 認証サービスを追加
+	authService services.AuthDomainService
 }
 
 func NewRegisterSpotPostInteractor(
 	p RegisterSpotPostPresenter,
 	s entities.SpotRepository,
 	r entities.PostRepository,
-	a services.AuthDomainService, // コンストラクタに認証サービスを追加
+	a services.AuthDomainService,
 ) RegisterSpotPostUseCase {
 	return &registerSpotPostInteractor{
 		presenter:   p,
@@ -54,50 +60,36 @@ func NewRegisterSpotPostInteractor(
 
 func (i *registerSpotPostInteractor) Execute(ctx context.Context, input RegisterSpotPostInput) (*RegisterSpotPostOutput, error) {
 	// 1. ユーザーの特定（認証）
-	// input.Token から user オブジェクトを特定
 	user, err := i.authService.VerifyToken(ctx, input.Token)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("auth error: %w", err)
 	}
 
 	// 2. 座標による同一店舗の特定
-	existingSpot, err := i.spotRepo.FindByLocation(
-		ctx,
-		input.Latitude,
-		input.Longitude,
-	)
+	existingSpot, err := i.spotRepo.FindByLocation(ctx, input.Latitude, input.Longitude)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("repository error: %w", err)
 	}
 
 	var targetSpot *entities.Spot
 
-	// --- 【理想の挙動への変更】 ---
-	// 既存店舗がある場合は、エラーを返さず自動的にその店舗を選択する
 	if existingSpot != nil {
+		if !input.Overwrite {
+			return nil, ErrSpotAlreadyExists
+		}
 		targetSpot = existingSpot
 	} else {
-		// 【同一地点なし】新規 Spot を生成・保存
-		// user.ID.Value() で int 型を取り出す
-		newSpot, err := entities.NewSpot(
-			0,
-			input.SpotName,
-			input.Latitude,
-			input.Longitude,
-			user.ID.Value(),
-		)
+		newSpot, err := entities.NewSpot(0, input.SpotName, input.Latitude, input.Longitude, user.ID.Value())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("entity creation error: %w", err)
 		}
-
 		targetSpot, err = i.spotRepo.Create(newSpot)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("spot storage error: %w", err)
 		}
 	}
 
 	// 3. Post（投稿）の生成
-	// user.ID.Value() と user.Username.String() を使用して型を合わせる
 	post, err := entities.NewPost(
 		0,
 		user.ID.Value(),
@@ -108,15 +100,17 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 		time.Now(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("post creation error: %w", err)
 	}
 
 	// 4. Post の永続化
 	createdPost, err := i.postRepo.Create(post)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("post storage error: %w", err)
 	}
 
 	// 5. 出力整形
+	// PresenterのOutputメソッド内で targetSpot.MeshID.String() を
+	// Output構造体の MeshID フィールドにマッピングするように実装してください
 	return i.presenter.Output(targetSpot, createdPost), nil
 }
