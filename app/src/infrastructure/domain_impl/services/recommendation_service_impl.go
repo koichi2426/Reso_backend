@@ -1,12 +1,12 @@
 package domain_impl_services
 
 import (
-	"context"
-	"fmt"
-	"math"
 	"app/src/domain/entities"
 	"app/src/domain/services"
 	"app/src/domain/value_objects"
+	"context"
+	"fmt"
+	"math"
 )
 
 type RecommendationServiceImpl struct {
@@ -34,21 +34,26 @@ func (s *RecommendationServiceImpl) Distill(
 	error,
 ) {
 	var (
-		emptySpot    *entities.Spot
-		emptyScore   value_objects.TotalScore
-		emptyRes     value_objects.ResonanceCount
-		emptyDen     value_objects.DensityScore
-		emptyReason  value_objects.Reason
-		emptyPosts   []*entities.Post
+		emptySpot   *entities.Spot
+		emptyScore  value_objects.TotalScore
+		emptyRes    value_objects.ResonanceCount
+		emptyDen    value_objects.DensityScore
+		emptyReason value_objects.Reason
+		emptyPosts  []*entities.Post
 	)
 
-	// --- STEP 1: 空間の量子化 ---
+	// --- STEP 1: 空間の量子化 (Quantization) ---
+	// 地球を固定されたメッシュに分割し、現在地の所属スロットを特定。
 	currentMesh, err := value_objects.NewMeshID(lat.Value(), lng.Value())
 	if err != nil {
 		return emptySpot, emptyScore, emptyRes, emptyDen, emptyReason, emptyPosts, err
 	}
 
-	// --- STEP 3: 共鳴者の特定（店舗一致に基づくメンター抽出） ---
+	// --- STEP 2: 意志の介在（※ドメイン制約） ---
+	// 本ステップは「登録時の上書き強制」により既にDB側で純度が担保されているものとする。
+
+	// --- STEP 3: 共鳴者の特定と探索近傍の画定 ---
+	// 「計9メッシュ」をスキャンし、同じスロットで同じ店を選んだ「共鳴者」を抽出。
 	resonantUsers, err := s.spotRepo.FindResonantUsersWithMatchCount(ctx, user.ID)
 	if err != nil {
 		return emptySpot, emptyScore, emptyRes, emptyDen, emptyReason, emptyPosts, err
@@ -58,8 +63,9 @@ func (s *RecommendationServiceImpl) Distill(
 	}
 
 	// --- STEP 4: 共鳴による「メッシュ代表店」の選定 ---
+	// 9つの各メッシュにおいて、最も共鳴度が高いユーザーが選んでいる1軒を「正解」として採用。
 	targetMeshes := append([]value_objects.MeshID{currentMesh}, currentMesh.GetSurroundingMeshIDs()...)
-	
+
 	resonanceMap := make(map[int]int)
 	resonantIDs := make([]value_objects.ID, 0, len(resonantUsers))
 	for _, ru := range resonantUsers {
@@ -77,7 +83,7 @@ func (s *RecommendationServiceImpl) Distill(
 
 	for _, spot := range allCandidateSpots {
 		mID := spot.MeshID.String()
-		rCount := resonanceMap[spot.RegisteredUserID.Value()] 
+		rCount := resonanceMap[spot.RegisteredUserID.Value()]
 
 		if rCount > meshTopResonance[mID] {
 			meshTopResonance[mID] = rCount
@@ -85,7 +91,10 @@ func (s *RecommendationServiceImpl) Distill(
 		}
 	}
 
-	// --- STEP 5 & 6: 統合スコア算出と運命の1軒の決定 ---
+	// --- STEP 5: 統合スコアの算出 (Calculation) ---
+	// 各メッシュ代表店に対し、共鳴重み・激戦区度・距離減衰を掛け合わせる。
+	// --- STEP 6: 運命の1軒の決定 (Final Selection) ---
+	// 全候補の中で最も高いスコアを持つ店舗を「最適解」として1つだけ抽出。
 	var bestSpot *entities.Spot
 	var maxScore float64
 	var bestResonance int
@@ -96,10 +105,12 @@ func (s *RecommendationServiceImpl) Distill(
 		density, _ := s.spotRepo.GetDensityScoreByMesh(ctx, spot.MeshID)
 
 		dist := s.calculateDistance(lat.Value(), lng.Value(), spot.Latitude.Value(), spot.Longitude.Value())
-		distanceWeight := 1.0 / (1.0 + math.Log1p(dist)) 
-
-		// 店舗一致（resCount）の価値を最大化する重み付け
+		
+		// 距離減衰の計算
+		distanceWeight := 1.0 / (1.0 + math.Log1p(dist))
+		// 共鳴重みの計算（意志の合致を最優先）
 		resonanceWeight := (math.Log1p(float64(resCount)) * 3.0) + 1.0
+		// 統合
 		scoreValue := (resonanceWeight * float64(density.Int())) * distanceWeight
 
 		if scoreValue > maxScore {
@@ -114,7 +125,7 @@ func (s *RecommendationServiceImpl) Distill(
 		return emptySpot, emptyScore, emptyRes, emptyDen, emptyReason, emptyPosts, fmt.Errorf("could not distill the best spot")
 	}
 
-	// --- 最終結果のパッキングと推薦理由の生成 ---
+	// --- 結果のパッキングと「理由」の生成 ---
 	totalScore, _ := value_objects.NewTotalScore(maxScore)
 	resCountVO, _ := value_objects.NewResonanceCount(bestResonance)
 	denScoreVO, _ := value_objects.NewDensityScore(bestDensity)
@@ -124,7 +135,7 @@ func (s *RecommendationServiceImpl) Distill(
 		bestDensity,
 	))
 
-	// --- 共鳴者による投稿内容の抽出 ---
+	// 共鳴者による実際の「声（Post）」を抽出
 	allPosts, _ := s.spotRepo.FindPostsBySpot(ctx, bestSpot.ID)
 	var resonantPosts []*entities.Post
 	for _, p := range allPosts {
