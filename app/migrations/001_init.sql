@@ -20,9 +20,7 @@ CREATE TABLE spots (
     -- 【重要】現在のメッシュの「王座（最新の投稿者）」を指す
     registered_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT unique_mesh_per_location UNIQUE (mesh_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 4. 投稿テーブル (Post Entity)
@@ -40,6 +38,9 @@ CREATE TABLE posts (
 
 -- 5. インデックスの作成
 CREATE INDEX idx_spots_location ON spots USING GIST (location);
+-- 同一座標は同一店舗として扱う（経度・緯度の完全一致で一意）
+CREATE UNIQUE INDEX idx_spots_exact_location_unique
+ON spots ((ST_X(location::geometry)), (ST_Y(location::geometry)));
 CREATE INDEX idx_posts_user_id ON posts (user_id);
 CREATE INDEX idx_posts_spot_id ON posts (spot_id);
 -- 【修正】店舗ID（spot_id）ベースの共鳴者検索を高速化
