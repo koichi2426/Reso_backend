@@ -17,8 +17,8 @@ type RegisterSpotPostInput struct {
 	Longitude float64
 	ImageURL  string
 	Caption   string
-	// Overwrite=true のときは「自分がこのメッシュで過去に登録した店舗情報」を入力内容で更新し、
-	// かつ自分の既存投稿を入れ替えて新規投稿を1件作成する。
+	// Overwrite=true のときは「登録先Spot」を再解決し（存在すれば利用、なければ作成）、
+	// かつそのSpotに対する自分の既存投稿を入れ替えて新規投稿を1件作成する。
 	// Overwrite=false のときは上記店舗への新規投稿を行わず、既存店舗情報のみ返す。
 	Overwrite bool
 }
@@ -127,22 +127,23 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 
 			// ユーザー過去登録はあるが過去投稿がない場合は、入力座標ベースの通常フローに進む。
 		} else {
-			// overwrite=true: Spot情報を入力値で更新し、ユーザー自身の既存投稿を入れ替える。
-			overwriteSpot, err := entities.NewSpot(
-				targetSpot.ID.Value(),
-				input.SpotName,
-				input.Latitude,
-				input.Longitude,
-				user.ID.Value(),
-			)
+			// overwrite=true: 既存Spotの属性は変更せず、入力地点に対応するSpotを再解決する。
+			resolvedSpot, err := i.spotRepo.FindByLocation(ctx, input.Latitude, input.Longitude)
 			if err != nil {
-				return nil, fmt.Errorf("entity creation error: %w", err)
+				return nil, fmt.Errorf("repository error: %w", err)
 			}
-			if err := i.spotRepo.Update(overwriteSpot); err != nil {
-				return nil, fmt.Errorf("spot update error: %w", err)
+			if resolvedSpot == nil {
+				newSpot, err := entities.NewSpot(0, input.SpotName, input.Latitude, input.Longitude, user.ID.Value())
+				if err != nil {
+					return nil, fmt.Errorf("entity creation error: %w", err)
+				}
+				resolvedSpot, err = i.spotRepo.Create(newSpot)
+				if err != nil {
+					return nil, fmt.Errorf("spot storage error: %w", err)
+				}
 			}
 
-			existingPosts, err := i.postRepo.FindBySpotID(targetSpot.ID)
+			existingPosts, err := i.postRepo.FindBySpotID(resolvedSpot.ID)
 			if err != nil {
 				return nil, fmt.Errorf("post lookup error: %w", err)
 			}
@@ -155,7 +156,7 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 				}
 			}
 
-			targetSpot = overwriteSpot
+			targetSpot = resolvedSpot
 
 			post, err := entities.NewPost(
 				0,

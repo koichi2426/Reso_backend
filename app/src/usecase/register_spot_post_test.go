@@ -235,16 +235,14 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 		},
 		{
-			name: "【正常系】自分の過去登録スポットが同メッシュにあり overwrite=true の場合、Spotを更新し自分のPostを入れ替える",
+			name: "【正常系】自分の過去登録スポットが同メッシュにあり overwrite=true の場合、Spotを再解決して自分のPostを入れ替える",
 			input: usecase.RegisterSpotPostInput{
 				Token: "valid_token", SpotName: "ステーキ屋さん", Latitude: 35.6467, Longitude: 139.7101, ImageURL: "http://example.com/merge.jpg", Caption: "上書き投稿", Overwrite: true,
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
 				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
-				sm.On("Update", mock.MatchedBy(func(s *entities.Spot) bool {
-					return s.ID.Value() == 77 && s.Name.String() == "ステーキ屋さん"
-				})).Return(nil)
+				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(ownSpot, nil)
 				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{ownSpotOldPost, otherUserPostOnOwnSpot, ownSpotLatestPost}, nil)
 				pm.On("Delete", ownSpotOldPost.ID).Return(nil)
 				pm.On("Delete", ownSpotLatestPost.ID).Return(nil)
@@ -255,7 +253,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			wantErr: false,
 			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
 				assert.Equal(t, 77, out.Spot.ID)
-				assert.Equal(t, "ステーキ屋さん", out.Spot.Name)
+				assert.Equal(t, "マイ店舗", out.Spot.Name)
 				assert.Equal(t, "post created", out.Message)
 			},
 		},
