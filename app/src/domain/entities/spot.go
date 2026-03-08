@@ -67,6 +67,7 @@ type SpotRepository interface {
     Delete(id value_objects.ID) error
 
     FindResonantUsersWithMatchCount(ctx context.Context, userID value_objects.ID) ([]ResonantUser, error)
+    FindSpotByMeshAndUser(ctx context.Context, meshID value_objects.MeshID, userID value_objects.ID) (*Spot, error)
     FindSpotsByMeshAndUsers(ctx context.Context, meshIDs []value_objects.MeshID, userIDs []value_objects.ID) ([]*Spot, error)
     GetDensityScoreByMesh(ctx context.Context, meshID value_objects.MeshID) (value_objects.DensityScore, error)
     FindPostsBySpot(ctx context.Context, spotID value_objects.ID) ([]*Post, error)

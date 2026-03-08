@@ -58,6 +58,13 @@ func (m *MockSpotRepository) Delete(id value_objects.ID) error { return nil }
 func (m *MockSpotRepository) FindResonantUsersWithMatchCount(ctx context.Context, uID value_objects.ID) ([]entities.ResonantUser, error) {
 	return nil, nil
 }
+func (m *MockSpotRepository) FindSpotByMeshAndUser(ctx context.Context, mID value_objects.MeshID, uID value_objects.ID) (*entities.Spot, error) {
+	args := m.Called(ctx, mID, uID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Spot), args.Error(1)
+}
 func (m *MockSpotRepository) FindSpotsByMeshAndUsers(ctx context.Context, mIDs []value_objects.MeshID, uIDs []value_objects.ID) ([]*entities.Spot, error) {
 	args := m.Called(ctx, mIDs, uIDs)
 	if args.Get(0) == nil {
@@ -158,7 +165,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
 					return p.SpotID.Value() == 1
@@ -179,7 +186,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot{ownSpot}, nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
 				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{ownSpotOldPost, otherUserPostOnOwnSpot, ownSpotLatestPost}, nil)
 			},
 			wantErr: false,
@@ -203,7 +210,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot{ownSpot}, nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
 				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{}, nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
@@ -227,7 +234,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot{ownSpot}, nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
 					return p.SpotID.Value() == 1 && p.UserID.Value() == 2
@@ -246,7 +253,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.0, 135.0).Return((*entities.Spot)(nil), nil)
 				sm.On("Create", mock.Anything).Return(newlyCreatedSpot, nil)
 				pm.On("Create", mock.Anything).Return(dummyPost, nil)
@@ -264,7 +271,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "hacker_token").Return(hacker, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 90.0, 180.0).Return((*entities.Spot)(nil), nil)
 				sm.On("Create", mock.Anything).Return(edgeSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
@@ -283,7 +290,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.Anything).Return(emptyCaptionPost, nil)
 			},
@@ -299,7 +306,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.1, 135.1).Return((*entities.Spot)(nil), nil)
 				// SpotのCreateでエラー発生
 				sm.On("Create", mock.Anything).Return((*entities.Spot)(nil), errors.New("spot insert error"))
@@ -321,7 +328,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6, 139.7).Return((*entities.Spot)(nil), errors.New("db find error"))
 			},
 			wantErr: true,
@@ -331,7 +338,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return(([]*entities.Spot)(nil), errors.New("db mesh-user find error"))
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), errors.New("db mesh-user find error"))
 			},
 			wantErr: true,
 		},
@@ -340,7 +347,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7, ImageURL: "http://example.com/error.jpg"},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotsByMeshAndUsers", mock.Anything, mock.Anything, mock.Anything).Return([]*entities.Spot(nil), nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6, 139.7).Return(existingSpot, nil)
 				pm.On("Create", mock.Anything).Return((*entities.Post)(nil), errors.New("db insert error"))
 			},

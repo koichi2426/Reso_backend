@@ -95,18 +95,14 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 	}
 
 	// 3. そのメッシュで、投稿者自身が過去に登録した Spot があるか確認する。
-	userSpotsInMesh, err := i.spotRepo.FindSpotsByMeshAndUsers(
-		ctx,
-		[]value_objects.MeshID{meshID},
-		[]value_objects.ID{user.ID},
-	)
+	userSpotInMesh, err := i.spotRepo.FindSpotByMeshAndUser(ctx, meshID, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("repository error: %w", err)
 	}
-	hasExistingInfo := len(userSpotsInMesh) > 0
+	hasExistingInfo := userSpotInMesh != nil
 
-	if len(userSpotsInMesh) > 0 {
-		targetSpot := userSpotsInMesh[0]
+	if userSpotInMesh != nil {
+		targetSpot := userSpotInMesh
 		if !input.Overwrite {
 			// ユーザーの過去登録がある場合で overwrite=false なら、投稿は作らず既存情報を返す。
 			posts, err := i.postRepo.FindBySpotID(targetSpot.ID)

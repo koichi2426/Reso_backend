@@ -153,6 +153,26 @@ func (r *spotRepository) FindByMeshID(meshID value_objects.MeshID) ([]*entities.
 	return spots, nil
 }
 
+func (r *spotRepository) FindSpotByMeshAndUser(ctx context.Context, meshID value_objects.MeshID, userID value_objects.ID) (*entities.Spot, error) {
+	query := `SELECT id, name, mesh_id, ST_X(location::geometry), ST_Y(location::geometry), registered_user_id
+	          FROM spots WHERE mesh_id = $1 AND registered_user_id = $2
+	          LIMIT 1`
+
+	var sid, uid int
+	var name, mID string
+	var lng, lat float64
+
+	err := r.db.QueryRowContext(ctx, query, meshID.String(), userID.Value()).Scan(&sid, &name, &mID, &lng, &lat, &uid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return entities.NewSpot(sid, name, lat, lng, uid)
+}
+
 func (r *spotRepository) FindSpotsByMeshAndUsers(ctx context.Context, meshIDs []value_objects.MeshID, userIDs []value_objects.ID) ([]*entities.Spot, error) {
 	query := `SELECT id, name, mesh_id, ST_X(location::geometry), ST_Y(location::geometry), registered_user_id 
               FROM spots WHERE mesh_id = ANY($1) AND registered_user_id = ANY($2)`
