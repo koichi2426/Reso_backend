@@ -133,3 +133,14 @@ docker volume rm $(docker volume ls -q)
 docker system df
 
 ```
+
+## データーベース閲覧
+```
+docker exec -it trapizzino_db psql -U user -d trapizzino -c "
+SELECT '--- USERS ---' AS table_name;
+SELECT * FROM users;
+SELECT '--- SPOTS ---' AS table_name;
+SELECT id, name, mesh_id, ST_AsText(location) as location, registered_user_id, created_at FROM spots;
+SELECT '--- POSTS ---' AS table_name;
+SELECT * FROM posts;
+```
