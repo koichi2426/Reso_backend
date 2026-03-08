@@ -53,7 +53,10 @@ func (m *MockSpotRepository) FindByID(ctx context.Context, id value_objects.ID) 
 func (m *MockSpotRepository) FindByMeshID(mID value_objects.MeshID) ([]*entities.Spot, error) {
 	return nil, nil
 }
-func (m *MockSpotRepository) Update(s *entities.Spot) error    { return nil }
+func (m *MockSpotRepository) Update(s *entities.Spot) error {
+	args := m.Called(s)
+	return args.Error(0)
+}
 func (m *MockSpotRepository) Delete(id value_objects.ID) error { return nil }
 func (m *MockSpotRepository) FindResonantUsersWithMatchCount(ctx context.Context, uID value_objects.ID) ([]entities.ResonantUser, error) {
 	return nil, nil
@@ -97,7 +100,10 @@ func (m *MockPostRepository) FindBySpotID(sID value_objects.ID) ([]*entities.Pos
 }
 func (m *MockPostRepository) FindByID(id value_objects.ID) (*entities.Post, error) { return nil, nil }
 func (m *MockPostRepository) Update(p *entities.Post) error                        { return nil }
-func (m *MockPostRepository) Delete(id value_objects.ID) error                     { return nil }
+func (m *MockPostRepository) Delete(id value_objects.ID) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
 
 type MockPresenter struct{}
 
@@ -147,6 +153,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 	dummyPost, _ := entities.NewPost(100, 2, 1, "local_malloy", "http://example.com/post.jpg", "caption", time.Now())
 	ownSpotOldPost, _ := entities.NewPost(201, 2, 77, "local_malloy", "http://example.com/old.jpg", "old", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
 	ownSpotLatestPost, _ := entities.NewPost(202, 2, 77, "local_malloy", "https://firebasestorage.googleapis.com/v0/b/...", "ここのパスタが絶品でした", time.Date(2026, 2, 27, 16, 20, 0, 0, time.UTC))
+	overwriteCreatedPost, _ := entities.NewPost(204, 2, 77, "local_malloy", "http://example.com/merge.jpg", "上書き投稿", time.Now())
 	otherUserPostOnOwnSpot, _ := entities.NewPost(203, 99, 77, "other_user", "http://example.com/other.jpg", "other", time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC))
 	hackerPost, _ := entities.NewPost(101, 3, 88, "local_hacker", "http://example.com/edge.jpg", "極地到達", time.Now())
 	emptyCaptionPost, _ := entities.NewPost(102, 2, 1, "local_malloy", "http://example.com/empty.jpg", "", time.Now())
@@ -228,21 +235,27 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 		},
 		{
-			name: "【正常系】自分の過去登録スポットが同メッシュにあり overwrite=true の場合、入力座標の既存スポットに新規投稿する",
+			name: "【正常系】自分の過去登録スポットが同メッシュにあり overwrite=true の場合、Spotを更新し自分のPostを入れ替える",
 			input: usecase.RegisterSpotPostInput{
-				Token: "valid_token", Latitude: 35.6467, Longitude: 139.7101, ImageURL: "http://example.com/merge.jpg", Caption: "上書き投稿", Overwrite: true,
+				Token: "valid_token", SpotName: "ステーキ屋さん", Latitude: 35.6467, Longitude: 139.7101, ImageURL: "http://example.com/merge.jpg", Caption: "上書き投稿", Overwrite: true,
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
 				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
-				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
+				sm.On("Update", mock.MatchedBy(func(s *entities.Spot) bool {
+					return s.ID.Value() == 77 && s.Name.String() == "ステーキ屋さん"
+				})).Return(nil)
+				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{ownSpotOldPost, otherUserPostOnOwnSpot, ownSpotLatestPost}, nil)
+				pm.On("Delete", ownSpotOldPost.ID).Return(nil)
+				pm.On("Delete", ownSpotLatestPost.ID).Return(nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
-					return p.SpotID.Value() == 1 && p.UserID.Value() == 2
-				})).Return(dummyPost, nil)
+					return p.SpotID.Value() == 77 && p.UserID.Value() == 2
+				})).Return(overwriteCreatedPost, nil)
 			},
 			wantErr: false,
 			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
-				assert.Equal(t, 1, out.Spot.ID)
+				assert.Equal(t, 77, out.Spot.ID)
+				assert.Equal(t, "ステーキ屋さん", out.Spot.Name)
 				assert.Equal(t, "post created", out.Message)
 			},
 		},

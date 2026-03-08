@@ -232,8 +232,21 @@ func (r *spotRepository) FindPostsBySpot(ctx context.Context, spotID value_objec
 }
 
 func (r *spotRepository) Update(spot *entities.Spot) error {
-	query := `UPDATE spots SET name = $1, location = ST_SetSRID(ST_MakePoint($2, $3), 4326) WHERE id = $4`
-	_, err := r.db.Exec(query, spot.Name.String(), spot.Longitude.Value(), spot.Latitude.Value(), spot.ID.Value())
+	query := `UPDATE spots
+	          SET name = $1,
+	              mesh_id = $2,
+	              location = ST_SetSRID(ST_MakePoint($3, $4), 4326),
+	              registered_user_id = $5
+	          WHERE id = $6`
+	_, err := r.db.Exec(
+		query,
+		spot.Name.String(),
+		spot.MeshID.String(),
+		spot.Longitude.Value(),
+		spot.Latitude.Value(),
+		spot.RegisteredUserID.Value(),
+		spot.ID.Value(),
+	)
 	return err
 }
 
