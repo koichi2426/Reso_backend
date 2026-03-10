@@ -98,6 +98,13 @@ func (m *MockPostRepository) FindBySpotID(sID value_objects.ID) ([]*entities.Pos
 	}
 	return args.Get(0).([]*entities.Post), args.Error(1)
 }
+func (m *MockPostRepository) FindByUserID(uID value_objects.ID) ([]*entities.Post, error) {
+	args := m.Called(uID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Post), args.Error(1)
+}
 func (m *MockPostRepository) FindByID(id value_objects.ID) (*entities.Post, error) { return nil, nil }
 func (m *MockPostRepository) Update(p *entities.Post) error                        { return nil }
 func (m *MockPostRepository) Delete(id value_objects.ID) error {

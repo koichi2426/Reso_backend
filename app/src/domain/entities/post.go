@@ -1,8 +1,8 @@
 package entities
 
 import (
-	"time"
 	"app/src/domain/value_objects"
+	"time"
 )
 
 type Post struct {
@@ -30,7 +30,7 @@ func NewPost(id, userID, spotID int, username, imageURL, caption string, postedA
 	if err != nil {
 		return nil, err
 	}
-	
+
 	uname, err := value_objects.NewUsername(username)
 	if err != nil {
 		return nil, err
@@ -59,6 +59,7 @@ type PostRepository interface {
 	Create(post *Post) (*Post, error)
 	FindByID(id value_objects.ID) (*Post, error)
 	FindBySpotID(spotID value_objects.ID) ([]*Post, error)
+	FindByUserID(userID value_objects.ID) ([]*Post, error)
 	Update(post *Post) error
 	Delete(id value_objects.ID) error
 }
