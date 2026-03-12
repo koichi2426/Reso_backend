@@ -140,7 +140,18 @@ SELECT id, username, email, created_at FROM users;
 SELECT '--- SPOTS ---' AS section;
 SELECT id, name, mesh_id, ST_AsText(location) AS lat_lng, registered_user_id FROM spots;
 
-SELECT '--- POSTS ---' AS section;
-SELECT id, user_id, spot_id, username, image_url, caption, posted_at FROM posts;
+SELECT '--- POSTS (with Mesh ID) ---' AS section;
+SELECT 
+    p.id, 
+    p.user_id, 
+    p.spot_id, 
+    s.mesh_id, 
+    p.username, 
+    p.image_url, 
+    p.caption, 
+    p.posted_at 
+FROM posts p
+JOIN spots s ON p.spot_id = s.id
+ORDER BY p.posted_at DESC;
 "
 ```
