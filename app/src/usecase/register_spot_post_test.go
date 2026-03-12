@@ -48,7 +48,11 @@ func (m *MockSpotRepository) Create(s *entities.Spot) (*entities.Spot, error) {
 	return args.Get(0).(*entities.Spot), args.Error(1)
 }
 func (m *MockSpotRepository) FindByID(ctx context.Context, id value_objects.ID) (*entities.Spot, error) {
-	return nil, nil
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Spot), args.Error(1)
 }
 func (m *MockSpotRepository) FindByMeshID(mID value_objects.MeshID) ([]*entities.Spot, error) {
 	return nil, nil
@@ -115,6 +119,14 @@ func (m *MockPostRepository) Delete(id value_objects.ID) error {
 	return args.Error(0)
 }
 
+func (m *MockPostRepository) FindByUserIDAndMeshID(uID value_objects.ID, mID value_objects.MeshID) ([]*entities.Post, error) {
+	args := m.Called(uID, mID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Post), args.Error(1)
+}
+
 type MockPresenter struct{}
 
 func (p *MockPresenter) Output(s *entities.Spot, post *entities.Post) *usecase.RegisterSpotPostOutput {
@@ -161,10 +173,13 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 	edgeSpot, _ := entities.NewSpot(88, "極地の店", 90.0, 180.0, 3) // 境界値用のスポット
 
 	dummyPost, _ := entities.NewPost(100, 2, 1, "local_malloy", "http://example.com/post.jpg", "caption", time.Now())
+	existingSpotOwnOldPost, _ := entities.NewPost(205, 2, 1, "local_malloy", "http://example.com/old-merge.jpg", "before overwrite", time.Date(2026, 2, 1, 10, 0, 0, 0, time.UTC))
 	ownSpotOldPost, _ := entities.NewPost(201, 2, 77, "local_malloy", "http://example.com/old.jpg", "old", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
 	ownSpotLatestPost, _ := entities.NewPost(202, 2, 77, "local_malloy", "https://firebasestorage.googleapis.com/v0/b/...", "ここのパスタが絶品でした", time.Date(2026, 2, 27, 16, 20, 0, 0, time.UTC))
 	overwriteCreatedPost, _ := entities.NewPost(204, 2, 77, "local_malloy", "http://example.com/merge.jpg", "上書き投稿", time.Now())
+	overwriteCreatedPostOnExistingSpot, _ := entities.NewPost(206, 2, 1, "local_malloy", "http://example.com/replace.jpg", "上書き置換", time.Now())
 	otherUserPostOnOwnSpot, _ := entities.NewPost(203, 99, 77, "other_user", "http://example.com/other.jpg", "other", time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC))
+	otherUserPostOnExistingSpot, _ := entities.NewPost(207, 1, 1, "owner_user", "http://example.com/owner.jpg", "owner", time.Date(2026, 2, 2, 10, 0, 0, 0, time.UTC))
 	hackerPost, _ := entities.NewPost(101, 3, 88, "local_hacker", "http://example.com/edge.jpg", "極地到達", time.Now())
 	emptyCaptionPost, _ := entities.NewPost(102, 2, 1, "local_malloy", "http://example.com/empty.jpg", "", time.Now())
 
@@ -182,7 +197,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
 					return p.SpotID.Value() == 1
@@ -203,8 +218,8 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
-				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{ownSpotOldPost, otherUserPostOnOwnSpot, ownSpotLatestPost}, nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return([]*entities.Post{ownSpotLatestPost, ownSpotOldPost}, nil)
+				sm.On("FindByID", mock.Anything, mock.Anything).Return(ownSpot, nil)
 			},
 			wantErr: false,
 			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
@@ -227,8 +242,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
-				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{}, nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
 					return p.SpotID.Value() == 1 && p.UserID.Value() == 2
@@ -238,7 +252,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
 				assert.Equal(t, "post created", out.Message)
 				assert.Equal(t, 1, out.Spot.ID)
-				assert.True(t, out.HasExistingInfo)
+				assert.False(t, out.HasExistingInfo)
 				if assert.NotNil(t, out.Post) {
 					assert.Equal(t, 100, out.Post.ID)
 				}
@@ -251,7 +265,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return(ownSpot, nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return([]*entities.Post{ownSpotLatestPost, ownSpotOldPost}, nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(ownSpot, nil)
 				pm.On("FindBySpotID", ownSpot.ID).Return([]*entities.Post{ownSpotOldPost, otherUserPostOnOwnSpot, ownSpotLatestPost}, nil)
 				pm.On("Delete", ownSpotOldPost.ID).Return(nil)
@@ -268,13 +282,35 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 		},
 		{
+			name: "【正常系】Spot所有者でなくても overwrite=true なら同一座標Spot上の自分の投稿を置換する",
+			input: usecase.RegisterSpotPostInput{
+				Token: "valid_token", SpotName: "恵比寿うどん", Latitude: 35.6467, Longitude: 139.7101, ImageURL: "http://example.com/replace.jpg", Caption: "上書き置換", Overwrite: true,
+			},
+			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
+				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return([]*entities.Post{existingSpotOwnOldPost}, nil)
+				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
+				pm.On("FindBySpotID", existingSpot.ID).Return([]*entities.Post{existingSpotOwnOldPost, otherUserPostOnExistingSpot}, nil)
+				pm.On("Delete", existingSpotOwnOldPost.ID).Return(nil)
+				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
+					return p.SpotID.Value() == 1 && p.UserID.Value() == 2
+				})).Return(overwriteCreatedPostOnExistingSpot, nil)
+			},
+			wantErr: false,
+			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
+				assert.Equal(t, 1, out.Spot.ID)
+				assert.Equal(t, "post created", out.Message)
+				assert.True(t, out.HasExistingInfo)
+			},
+		},
+		{
 			name: "【正常系】新規地点の場合、スポットを新規作成して投稿する",
 			input: usecase.RegisterSpotPostInput{
 				Token: "valid_token", SpotName: "新規店", Latitude: 35.0, Longitude: 135.0, ImageURL: "http://example.com/new.jpg",
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.0, 135.0).Return((*entities.Spot)(nil), nil)
 				sm.On("Create", mock.Anything).Return(newlyCreatedSpot, nil)
 				pm.On("Create", mock.Anything).Return(dummyPost, nil)
@@ -292,7 +328,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "hacker_token").Return(hacker, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 90.0, 180.0).Return((*entities.Spot)(nil), nil)
 				sm.On("Create", mock.Anything).Return(edgeSpot, nil)
 				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
@@ -311,7 +347,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
 				pm.On("Create", mock.Anything).Return(emptyCaptionPost, nil)
 			},
@@ -327,7 +363,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.1, 135.1).Return((*entities.Spot)(nil), nil)
 				// SpotのCreateでエラー発生
 				sm.On("Create", mock.Anything).Return((*entities.Spot)(nil), errors.New("spot insert error"))
@@ -349,7 +385,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6, 139.7).Return((*entities.Spot)(nil), errors.New("db find error"))
 			},
 			wantErr: true,
@@ -359,7 +395,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), errors.New("db mesh-user find error"))
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), errors.New("db mesh-user find error"))
 			},
 			wantErr: true,
 		},
@@ -368,7 +404,7 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 			input: usecase.RegisterSpotPostInput{Token: "valid_token", Latitude: 35.6, Longitude: 139.7, ImageURL: "http://example.com/error.jpg"},
 			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
 				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
-				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				pm.On("FindByUserIDAndMeshID", mock.Anything, mock.Anything).Return(([]*entities.Post)(nil), nil)
 				sm.On("FindByLocation", mock.Anything, 35.6, 139.7).Return(existingSpot, nil)
 				pm.On("Create", mock.Anything).Return((*entities.Post)(nil), errors.New("db insert error"))
 			},

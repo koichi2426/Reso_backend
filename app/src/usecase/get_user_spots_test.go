@@ -46,7 +46,11 @@ func (m *GetUserSpotsMockSpotRepository) Create(spot *entities.Spot) (*entities.
 	return nil, nil
 }
 func (m *GetUserSpotsMockSpotRepository) FindByID(ctx context.Context, id value_objects.ID) (*entities.Spot, error) {
-	return nil, nil
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Spot), args.Error(1)
 }
 func (m *GetUserSpotsMockSpotRepository) FindByMeshID(meshID value_objects.MeshID) ([]*entities.Spot, error) {
 	return nil, nil
@@ -87,43 +91,51 @@ func (m *GetUserSpotsMockPostRepository) Create(post *entities.Post) (*entities.
 func (m *GetUserSpotsMockPostRepository) FindByID(id value_objects.ID) (*entities.Post, error) {
 	return nil, nil
 }
+func (m *GetUserSpotsMockPostRepository) FindByUserID(userID value_objects.ID) ([]*entities.Post, error) {
+	args := m.Called(userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Post), args.Error(1)
+}
 func (m *GetUserSpotsMockPostRepository) Update(post *entities.Post) error { return nil }
 func (m *GetUserSpotsMockPostRepository) Delete(id value_objects.ID) error { return nil }
+func (m *GetUserSpotsMockPostRepository) FindByUserIDAndMeshID(uID value_objects.ID, mID value_objects.MeshID) ([]*entities.Post, error) {
+	return nil, nil
+}
 
 type GetUserSpotsMockPresenter struct{}
 
-func (p *GetUserSpotsMockPresenter) Output(items []usecase.UserSpotDomainItem) *usecase.GetUserSpotsResponse {
-	out := make([]usecase.UserSpotResult, 0, len(items))
-	for _, item := range items {
+func (p *GetUserSpotsMockPresenter) Output(spots []*entities.Spot, posts []*entities.Post) *usecase.GetUserSpotsOutput {
+	out := make([]usecase.UserSpotResult, 0, len(spots))
+	for idx, spot := range spots {
 		var post *usecase.UserPostPayload
-		if item.Post != nil {
+		if idx < len(posts) && posts[idx] != nil {
+			currentPost := posts[idx]
 			post = &usecase.UserPostPayload{
-				ID:       item.Post.ID.Value(),
-				UserName: item.Post.UserName.String(),
-				Caption:  item.Post.Caption.String(),
-				PostedAt: item.Post.PostedAt.UTC().Format(time.RFC3339),
+				ID:       currentPost.ID.Value(),
+				UserName: currentPost.UserName.String(),
+				Caption:  currentPost.Caption.String(),
+				PostedAt: currentPost.PostedAt.UTC().Format(time.RFC3339),
 			}
 		}
 		out = append(out, usecase.UserSpotResult{
 			Spot: usecase.UserSpotPayload{
-				ID:   item.Spot.ID.Value(),
-				Name: item.Spot.Name.String(),
+				ID:   spot.ID.Value(),
+				Name: spot.Name.String(),
 			},
 			Post: post,
 		})
 	}
-	return &usecase.GetUserSpotsResponse{UserSpots: out}
+	return &usecase.GetUserSpotsOutput{UserSpots: out}
 }
 
 func TestGetUserSpots_Execute(t *testing.T) {
-	user, _ := entities.NewUser(2, "local_malloy", "malloy@example.com", "hashed")
+	user, _ := entities.NewUser(2, "local_malloy", "malloy@example.com", "hashed_password")
 	spot1, _ := entities.NewSpot(101, "店A", 35.1, 139.1, 2)
-	spot2, _ := entities.NewSpot(102, "店B", 35.2, 139.2, 2)
-	otherUser, _ := entities.NewUser(99, "other_user", "other@example.com", "hashed")
 
 	oldPost, _ := entities.NewPost(1, 2, 101, "local_malloy", "https://example.com/old.jpg", "old", time.Date(2026, 2, 1, 9, 0, 0, 0, time.UTC))
 	latestPost, _ := entities.NewPost(2, 2, 101, "local_malloy", "https://example.com/new.jpg", "new", time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC))
-	othersPost, _ := entities.NewPost(3, otherUser.ID.Value(), 101, "other_user", "https://example.com/other.jpg", "other", time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
 
 	t.Run("最新の自分の投稿を紐付けて一覧を返す", func(t *testing.T) {
 		am := new(GetUserSpotsMockAuthService)
@@ -132,16 +144,15 @@ func TestGetUserSpots_Execute(t *testing.T) {
 		presenter := &GetUserSpotsMockPresenter{}
 
 		am.On("VerifyToken", mock.Anything, "valid_token").Return(user, nil)
-		sm.On("FindByRegisteredUser", mock.Anything, user.ID).Return([]*entities.Spot{spot1, spot2}, nil)
-		pm.On("FindBySpotID", spot1.ID).Return([]*entities.Post{oldPost, latestPost, othersPost}, nil)
-		pm.On("FindBySpotID", spot2.ID).Return([]*entities.Post{}, nil)
+		pm.On("FindByUserID", user.ID).Return([]*entities.Post{oldPost, latestPost}, nil)
+		sm.On("FindByID", mock.Anything, oldPost.SpotID).Return(spot1, nil)
+		sm.On("FindByID", mock.Anything, latestPost.SpotID).Return(spot1, nil)
 
 		interactor := usecase.NewGetUserSpotsInteractor(presenter, sm, pm, am)
 		out, err := interactor.Execute(context.Background(), usecase.GetUserSpotsInput{Token: "valid_token"})
 		assert.NoError(t, err)
-		assert.Len(t, out.UserSpots, 2)
+		assert.Len(t, out.UserSpots, 1)
 		assert.Equal(t, 2, out.UserSpots[0].Post.ID)
-		assert.Nil(t, out.UserSpots[1].Post)
 	})
 
 	t.Run("認証失敗時はエラー", func(t *testing.T) {

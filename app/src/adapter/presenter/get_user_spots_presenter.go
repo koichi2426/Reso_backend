@@ -3,6 +3,7 @@ package presenter
 import (
 	"time"
 
+	"app/src/domain/entities"
 	"app/src/usecase"
 )
 
@@ -12,34 +13,35 @@ func NewGetUserSpotsPresenter() usecase.GetUserSpotsPresenter {
 	return &getUserSpotsPresenter{}
 }
 
-func (p *getUserSpotsPresenter) Output(items []usecase.UserSpotDomainItem) *usecase.GetUserSpotsResponse {
-	out := make([]usecase.UserSpotResult, 0, len(items))
+func (p *getUserSpotsPresenter) Output(spots []*entities.Spot, posts []*entities.Post) *usecase.GetUserSpotsOutput {
+	out := make([]usecase.UserSpotResult, 0, len(spots))
 
-	for _, item := range items {
+	for idx, spot := range spots {
 		spotPayload := usecase.UserSpotPayload{
-			ID:     item.Spot.ID.Value(),
-			Name:   item.Spot.Name.String(),
-			MeshID: item.Spot.MeshID.String(),
+			ID:     spot.ID.Value(),
+			Name:   spot.Name.String(),
+			MeshID: spot.MeshID.String(),
 			Location: usecase.UserSpotLocation{
-				Latitude:  item.Spot.Latitude.Value(),
-				Longitude: item.Spot.Longitude.Value(),
+				Latitude:  spot.Latitude.Value(),
+				Longitude: spot.Longitude.Value(),
 			},
 		}
 
 		var postPayload *usecase.UserPostPayload
-		if item.Post != nil {
+		if idx < len(posts) && posts[idx] != nil {
+			post := posts[idx]
 			var imageURL *string
-			image := item.Post.ImageURL.String()
+			image := post.ImageURL.String()
 			if image != "" {
 				imageURL = &image
 			}
 
 			postPayload = &usecase.UserPostPayload{
-				ID:       item.Post.ID.Value(),
-				UserName: item.Post.UserName.String(),
+				ID:       post.ID.Value(),
+				UserName: post.UserName.String(),
 				ImageURL: imageURL,
-				Caption:  item.Post.Caption.String(),
-				PostedAt: item.Post.PostedAt.UTC().Format(time.RFC3339),
+				Caption:  post.Caption.String(),
+				PostedAt: post.PostedAt.UTC().Format(time.RFC3339),
 			}
 		}
 
@@ -49,7 +51,7 @@ func (p *getUserSpotsPresenter) Output(items []usecase.UserSpotDomainItem) *usec
 		})
 	}
 
-	return &usecase.GetUserSpotsResponse{
+	return &usecase.GetUserSpotsOutput{
 		UserSpots: out,
 	}
 }

@@ -12,7 +12,7 @@ type GetUserSpotsInput struct {
 	Token string
 }
 
-type GetUserSpotsResponse struct {
+type GetUserSpotsOutput struct {
 	UserSpots []UserSpotResult `json:"user_spots"`
 }
 
@@ -42,16 +42,11 @@ type UserPostPayload struct {
 }
 
 type GetUserSpotsPresenter interface {
-	Output(items []UserSpotDomainItem) *GetUserSpotsResponse
+	Output(spots []*entities.Spot, posts []*entities.Post) *GetUserSpotsOutput
 }
 
 type GetUserSpotsUseCase interface {
-	Execute(ctx context.Context, input GetUserSpotsInput) (*GetUserSpotsResponse, error)
-}
-
-type UserSpotDomainItem struct {
-	Spot *entities.Spot
-	Post *entities.Post
+	Execute(ctx context.Context, input GetUserSpotsInput) (*GetUserSpotsOutput, error)
 }
 
 type getUserSpotsInteractor struct {
@@ -75,41 +70,48 @@ func NewGetUserSpotsInteractor(
 	}
 }
 
-func (i *getUserSpotsInteractor) Execute(ctx context.Context, input GetUserSpotsInput) (*GetUserSpotsResponse, error) {
+func (i *getUserSpotsInteractor) Execute(ctx context.Context, input GetUserSpotsInput) (*GetUserSpotsOutput, error) {
 	user, err := i.authService.VerifyToken(ctx, input.Token)
 	if err != nil {
 		return nil, fmt.Errorf("auth error: %w", err)
 	}
 
-	spots, err := i.spotRepo.FindByRegisteredUser(ctx, user.ID)
+	posts, err := i.postRepo.FindByUserID(user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("spot lookup error: %w", err)
+		return nil, fmt.Errorf("post lookup error: %w", err)
 	}
 
-	items := make([]UserSpotDomainItem, 0, len(spots))
-	for _, spot := range spots {
-		posts, err := i.postRepo.FindBySpotID(spot.ID)
+	latestByMesh := make(map[string]struct {
+		spot *entities.Spot
+		post *entities.Post
+	})
+	for _, post := range posts {
+		spot, err := i.spotRepo.FindByID(ctx, post.SpotID)
 		if err != nil {
-			return nil, fmt.Errorf("post lookup error: %w", err)
+			return nil, fmt.Errorf("spot lookup error: %w", err)
 		}
 
-		var latest *entities.Post
-		for _, post := range posts {
-			if post.UserID.Value() != user.ID.Value() {
-				continue
-			}
-			if latest == nil || isAfter(post, latest) {
-				latest = post
+		meshID := spot.MeshID.String()
+		current, exists := latestByMesh[meshID]
+		if !exists || isAfter(post, current.post) {
+			latestByMesh[meshID] = struct {
+				spot *entities.Spot
+				post *entities.Post
+			}{
+				spot: spot,
+				post: post,
 			}
 		}
-
-		items = append(items, UserSpotDomainItem{
-			Spot: spot,
-			Post: latest,
-		})
 	}
 
-	return i.presenter.Output(items), nil
+	spots := make([]*entities.Spot, 0, len(latestByMesh))
+	latestPosts := make([]*entities.Post, 0, len(latestByMesh))
+	for _, item := range latestByMesh {
+		spots = append(spots, item.spot)
+		latestPosts = append(latestPosts, item.post)
+	}
+
+	return i.presenter.Output(spots, latestPosts), nil
 }
 
 func isAfter(current *entities.Post, base *entities.Post) bool {
