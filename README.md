@@ -1,8 +1,5 @@
 ## 🏗️ アーキテクチャ
-(準備中)
-
-## 📦 デプロイ
-(準備中)
+<img width="1400" height="841" alt="image" src="https://github.com/user-attachments/assets/a017647d-205a-494e-9e0c-84a976631122" />
 
 ## 🚀 セットアップ手順
 
