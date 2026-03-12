@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   db:
     # PostGIS入りの公式イメージを使用
-    image: postgis/postgis:15-3.3
+    image: kartoza/postgis:15-3.4
     container_name: trapizzino_db
     restart: always
     environment:
-      POSTGRES_USER: user
+      POSTGRES_USER: app_user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: trapizzino
     ports:
@@ -16,10 +14,11 @@ services:
       - db_data:/var/lib/postgresql/data
     healthcheck:
       # ポスグレが接続を受け付けられる状態かを確認
-      test: ["CMD-SHELL", "pg_isready -U user -d trapizzino"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 40s
 
   app:
     build:

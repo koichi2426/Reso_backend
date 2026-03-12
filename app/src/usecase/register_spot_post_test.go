@@ -53,6 +53,9 @@ func (m *MockSpotRepository) FindByID(ctx context.Context, id value_objects.ID) 
 func (m *MockSpotRepository) FindByMeshID(mID value_objects.MeshID) ([]*entities.Spot, error) {
 	return nil, nil
 }
+func (m *MockSpotRepository) FindByRegisteredUser(ctx context.Context, userID value_objects.ID) ([]*entities.Spot, error) {
+	return nil, nil
+}
 func (m *MockSpotRepository) Update(s *entities.Spot) error {
 	args := m.Called(s)
 	return args.Error(0)
