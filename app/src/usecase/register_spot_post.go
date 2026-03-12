@@ -102,6 +102,62 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 	}
 	hasExistingInfo := userSpotInMesh != nil
 
+	if input.Overwrite {
+		// overwrite=true の場合は Spot 所有者に依存せず、入力座標の Spot を起点に自分の投稿を置換する。
+		resolvedSpot, err := i.spotRepo.FindByLocation(ctx, input.Latitude, input.Longitude)
+		if err != nil {
+			return nil, fmt.Errorf("repository error: %w", err)
+		}
+		if resolvedSpot == nil {
+			newSpot, err := entities.NewSpot(0, input.SpotName, input.Latitude, input.Longitude, user.ID.Value())
+			if err != nil {
+				return nil, fmt.Errorf("entity creation error: %w", err)
+			}
+			resolvedSpot, err = i.spotRepo.Create(newSpot)
+			if err != nil {
+				return nil, fmt.Errorf("spot storage error: %w", err)
+			}
+		}
+
+		existingPosts, err := i.postRepo.FindBySpotID(resolvedSpot.ID)
+		if err != nil {
+			return nil, fmt.Errorf("post lookup error: %w", err)
+		}
+
+		hadOwnPostOnResolvedSpot := false
+		for _, p := range existingPosts {
+			if p.UserID.Value() != user.ID.Value() {
+				continue
+			}
+			hadOwnPostOnResolvedSpot = true
+			if err := i.postRepo.Delete(p.ID); err != nil {
+				return nil, fmt.Errorf("post replacement error: %w", err)
+			}
+		}
+
+		post, err := entities.NewPost(
+			0,
+			user.ID.Value(),
+			resolvedSpot.ID.Value(),
+			user.Username.String(),
+			input.ImageURL,
+			input.Caption,
+			time.Now(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("post creation error: %w", err)
+		}
+
+		createdPost, err := i.postRepo.Create(post)
+		if err != nil {
+			return nil, fmt.Errorf("post storage error: %w", err)
+		}
+
+		output := i.presenter.Output(resolvedSpot, createdPost)
+		output.HasExistingInfo = hasExistingInfo || hadOwnPostOnResolvedSpot
+		return output, nil
+	}
+
 	if userSpotInMesh != nil {
 		targetSpot := userSpotInMesh
 		if !input.Overwrite {
@@ -126,59 +182,6 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 			}
 
 			// ユーザー過去登録はあるが過去投稿がない場合は、入力座標ベースの通常フローに進む。
-		} else {
-			// overwrite=true: 既存Spotの属性は変更せず、入力地点に対応するSpotを再解決する。
-			resolvedSpot, err := i.spotRepo.FindByLocation(ctx, input.Latitude, input.Longitude)
-			if err != nil {
-				return nil, fmt.Errorf("repository error: %w", err)
-			}
-			if resolvedSpot == nil {
-				newSpot, err := entities.NewSpot(0, input.SpotName, input.Latitude, input.Longitude, user.ID.Value())
-				if err != nil {
-					return nil, fmt.Errorf("entity creation error: %w", err)
-				}
-				resolvedSpot, err = i.spotRepo.Create(newSpot)
-				if err != nil {
-					return nil, fmt.Errorf("spot storage error: %w", err)
-				}
-			}
-
-			existingPosts, err := i.postRepo.FindBySpotID(resolvedSpot.ID)
-			if err != nil {
-				return nil, fmt.Errorf("post lookup error: %w", err)
-			}
-			for _, p := range existingPosts {
-				if p.UserID.Value() != user.ID.Value() {
-					continue
-				}
-				if err := i.postRepo.Delete(p.ID); err != nil {
-					return nil, fmt.Errorf("post replacement error: %w", err)
-				}
-			}
-
-			targetSpot = resolvedSpot
-
-			post, err := entities.NewPost(
-				0,
-				user.ID.Value(),
-				targetSpot.ID.Value(),
-				user.Username.String(),
-				input.ImageURL,
-				input.Caption,
-				time.Now(),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("post creation error: %w", err)
-			}
-
-			createdPost, err := i.postRepo.Create(post)
-			if err != nil {
-				return nil, fmt.Errorf("post storage error: %w", err)
-			}
-
-			output := i.presenter.Output(targetSpot, createdPost)
-			output.HasExistingInfo = hasExistingInfo
-			return output, nil
 		}
 	}
 

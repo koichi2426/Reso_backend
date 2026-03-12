@@ -161,10 +161,13 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 	edgeSpot, _ := entities.NewSpot(88, "極地の店", 90.0, 180.0, 3) // 境界値用のスポット
 
 	dummyPost, _ := entities.NewPost(100, 2, 1, "local_malloy", "http://example.com/post.jpg", "caption", time.Now())
+	existingSpotOwnOldPost, _ := entities.NewPost(205, 2, 1, "local_malloy", "http://example.com/old-merge.jpg", "before overwrite", time.Date(2026, 2, 1, 10, 0, 0, 0, time.UTC))
 	ownSpotOldPost, _ := entities.NewPost(201, 2, 77, "local_malloy", "http://example.com/old.jpg", "old", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
 	ownSpotLatestPost, _ := entities.NewPost(202, 2, 77, "local_malloy", "https://firebasestorage.googleapis.com/v0/b/...", "ここのパスタが絶品でした", time.Date(2026, 2, 27, 16, 20, 0, 0, time.UTC))
 	overwriteCreatedPost, _ := entities.NewPost(204, 2, 77, "local_malloy", "http://example.com/merge.jpg", "上書き投稿", time.Now())
+	overwriteCreatedPostOnExistingSpot, _ := entities.NewPost(206, 2, 1, "local_malloy", "http://example.com/replace.jpg", "上書き置換", time.Now())
 	otherUserPostOnOwnSpot, _ := entities.NewPost(203, 99, 77, "other_user", "http://example.com/other.jpg", "other", time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC))
+	otherUserPostOnExistingSpot, _ := entities.NewPost(207, 1, 1, "owner_user", "http://example.com/owner.jpg", "owner", time.Date(2026, 2, 2, 10, 0, 0, 0, time.UTC))
 	hackerPost, _ := entities.NewPost(101, 3, 88, "local_hacker", "http://example.com/edge.jpg", "極地到達", time.Now())
 	emptyCaptionPost, _ := entities.NewPost(102, 2, 1, "local_malloy", "http://example.com/empty.jpg", "", time.Now())
 
@@ -265,6 +268,28 @@ func TestRegisterSpotPost_Execute(t *testing.T) {
 				assert.Equal(t, 77, out.Spot.ID)
 				assert.Equal(t, "マイ店舗", out.Spot.Name)
 				assert.Equal(t, "post created", out.Message)
+			},
+		},
+		{
+			name: "【正常系】Spot所有者でなくても overwrite=true なら同一座標Spot上の自分の投稿を置換する",
+			input: usecase.RegisterSpotPostInput{
+				Token: "valid_token", SpotName: "恵比寿うどん", Latitude: 35.6467, Longitude: 139.7101, ImageURL: "http://example.com/replace.jpg", Caption: "上書き置換", Overwrite: true,
+			},
+			setupMock: func(am *MockAuthService, sm *MockSpotRepository, pm *MockPostRepository) {
+				am.On("VerifyToken", mock.Anything, "valid_token").Return(malloy, nil)
+				sm.On("FindSpotByMeshAndUser", mock.Anything, mock.Anything, mock.Anything).Return((*entities.Spot)(nil), nil)
+				sm.On("FindByLocation", mock.Anything, 35.6467, 139.7101).Return(existingSpot, nil)
+				pm.On("FindBySpotID", existingSpot.ID).Return([]*entities.Post{existingSpotOwnOldPost, otherUserPostOnExistingSpot}, nil)
+				pm.On("Delete", existingSpotOwnOldPost.ID).Return(nil)
+				pm.On("Create", mock.MatchedBy(func(p *entities.Post) bool {
+					return p.SpotID.Value() == 1 && p.UserID.Value() == 2
+				})).Return(overwriteCreatedPostOnExistingSpot, nil)
+			},
+			wantErr: false,
+			check: func(t *testing.T, out *usecase.RegisterSpotPostOutput) {
+				assert.Equal(t, 1, out.Spot.ID)
+				assert.Equal(t, "post created", out.Message)
+				assert.True(t, out.HasExistingInfo)
 			},
 		},
 		{
