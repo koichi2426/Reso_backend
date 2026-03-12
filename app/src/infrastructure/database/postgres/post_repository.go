@@ -45,7 +45,8 @@ func (r *PostRepository) FindByID(id value_objects.ID) (*entities.Post, error) {
 	row := r.db.QueryRow(query, id.Value())
 
 	var pid, userID, spotID int
-	var userName, imageURL, caption string
+	var userName, caption string
+	var imageURL sql.NullString
 	var postedAt sql.NullTime
 
 	if err := row.Scan(&pid, &userID, &spotID, &userName, &imageURL, &caption, &postedAt); err != nil {
@@ -56,7 +57,7 @@ func (r *PostRepository) FindByID(id value_objects.ID) (*entities.Post, error) {
 	uID, _ := value_objects.NewID(userID)
 	sID, _ := value_objects.NewID(spotID)
 	uname, _ := value_objects.NewUsername(userName)
-	imgURL, _ := value_objects.NewImageURL(imageURL)
+	imgURL, _ := value_objects.NewImageURL(imageURL.String)
 	capVO, _ := value_objects.NewCaption(caption)
 
 	return &entities.Post{
@@ -81,7 +82,8 @@ func (r *PostRepository) FindBySpotID(spotID value_objects.ID) ([]*entities.Post
 	var posts []*entities.Post
 	for rows.Next() {
 		var pid, userID, sid int
-		var userName, imageURL, caption string
+		var userName, caption string
+		var imageURL sql.NullString
 		var postedAt sql.NullTime
 		if err := rows.Scan(&pid, &userID, &sid, &userName, &imageURL, &caption, &postedAt); err != nil {
 			return nil, err
@@ -91,7 +93,7 @@ func (r *PostRepository) FindBySpotID(spotID value_objects.ID) ([]*entities.Post
 		uID, _ := value_objects.NewID(userID)
 		sID, _ := value_objects.NewID(sid)
 		uname, _ := value_objects.NewUsername(userName)
-		imgURL, _ := value_objects.NewImageURL(imageURL)
+		imgURL, _ := value_objects.NewImageURL(imageURL.String)
 		capVO, _ := value_objects.NewCaption(caption)
 
 		posts = append(posts, &entities.Post{

@@ -149,6 +149,34 @@ func (r *spotRepository) FindByMeshID(meshID value_objects.MeshID) ([]*entities.
 	return spots, nil
 }
 
+func (r *spotRepository) FindByRegisteredUser(ctx context.Context, userID value_objects.ID) ([]*entities.Spot, error) {
+	query := `SELECT id, name, ST_X(location::geometry), ST_Y(location::geometry), registered_user_id
+	          FROM spots
+	          WHERE registered_user_id = $1
+	          ORDER BY created_at DESC, id DESC`
+	rows, err := r.db.QueryContext(ctx, query, userID.Value())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	spots := make([]*entities.Spot, 0)
+	for rows.Next() {
+		var sid, uid int
+		var name string
+		var lng, lat float64
+		if err := rows.Scan(&sid, &name, &lng, &lat, &uid); err != nil {
+			return nil, err
+		}
+		s, err := entities.NewSpot(sid, name, lat, lng, uid)
+		if err != nil {
+			return nil, err
+		}
+		spots = append(spots, s)
+	}
+	return spots, nil
+}
+
 func (r *spotRepository) FindSpotByMeshAndUser(ctx context.Context, meshID value_objects.MeshID, userID value_objects.ID) (*entities.Spot, error) {
 	query := `SELECT id, name, mesh_id, ST_X(location::geometry), ST_Y(location::geometry), registered_user_id
 	          FROM spots WHERE mesh_id = $1 AND registered_user_id = $2
@@ -226,12 +254,13 @@ func (r *spotRepository) FindPostsBySpot(ctx context.Context, spotID value_objec
 	var posts []*entities.Post
 	for rows.Next() {
 		var pid, uid, sid int
-		var uname, img, capStr string
+		var uname, capStr string
+		var img sql.NullString
 		var createdAt time.Time
 		if err := rows.Scan(&pid, &uid, &sid, &uname, &img, &capStr, &createdAt); err != nil {
 			return nil, err
 		}
-		p, _ := entities.NewPost(pid, uid, sid, uname, img, capStr, createdAt)
+		p, _ := entities.NewPost(pid, uid, sid, uname, img.String, capStr, createdAt)
 		posts = append(posts, p)
 	}
 	return posts, nil

@@ -59,6 +59,7 @@ type SpotRepository interface {
     Create(spot *Spot) (*Spot, error)
     FindByID(ctx context.Context, id value_objects.ID) (*Spot, error)
     FindByMeshID(meshID value_objects.MeshID) ([]*Spot, error)
+    FindByRegisteredUser(ctx context.Context, userID value_objects.ID) ([]*Spot, error)
     
     // 座標による同一店舗検索メソッドを追加
     FindByLocation(ctx context.Context, lat, lng float64) (*Spot, error)

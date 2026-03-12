@@ -32,18 +32,21 @@ func InitRoutes(e *echo.Echo, db *sql.DB) {
 	userSignupPresenter := presenter.NewUserSignupPresenter()
 	registerSpotPostPresenter := presenter.NewRegisterSpotPostPresenter()
 	distillRecommendationPresenter := presenter.NewDistillRecommendationPresenter()
+	getUserSpotsPresenter := presenter.NewGetUserSpotsPresenter()
 
 	// 3. ユースケースの初期化
 	authLoginUsecase := usecase.NewAuthLoginInteractor(authLoginPresenter, userRepo, authService)
 	userSignupUsecase := usecase.NewUserSignupInteractor(userSignupPresenter, userRepo, authService)
 	registerSpotUsecase := usecase.NewRegisterSpotPostInteractor(registerSpotPostPresenter, spotRepo, postRepo, authService)
 	distillRecommendationUsecase := usecase.NewDistillRecommendationInteractor(distillRecommendationPresenter, recommendationService, authService)
+	getUserSpotsUsecase := usecase.NewGetUserSpotsInteractor(getUserSpotsPresenter, spotRepo, postRepo, authService)
 
 	// 4. コントローラーの初期化
 	authLoginController := controller.NewAuthLoginController(authLoginUsecase)
 	userSignupController := controller.NewUserSignupController(userSignupUsecase)
 	registerSpotPostController := controller.NewRegisterSpotPostController(registerSpotUsecase)
 	distillRecommendationController := controller.NewDistillRecommendationController(distillRecommendationUsecase)
+	getUserSpotsController := controller.NewGetUserSpotsController(getUserSpotsUsecase)
 
 	// 5. ルーティング定義
 	v1 := e.Group("/v1")
@@ -54,6 +57,7 @@ func InitRoutes(e *echo.Echo, db *sql.DB) {
 	// PUT メソッドで定義された「情報の蒸留」エンドポイント
 	v1.PUT("/mesh/spots", registerSpotPostController.Execute)
 	v1.GET("/recommendation/distill", distillRecommendationController.Execute)
+	v1.GET("/users/me/spots", getUserSpotsController.Execute)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})

@@ -65,7 +65,7 @@ atlas migrate hash --dir "file://app/migrations"
 # スキーマを適用
 atlas migrate apply \
   --dir "file://app/migrations" \
-  --url "postgres://user:password@localhost:5432/trapizzino?sslmode=disable" \
+  --url "postgres://app_user:password@localhost:5432/trapizzino?sslmode=disable" \
   --allow-dirty
 
 ```
@@ -132,8 +132,8 @@ docker system df
 ```
 
 ## データーベース閲覧
-```
-docker exec -it trapizzino_db psql -U user -d trapizzino -c "
+``` 
+docker exec -it trapizzino_db psql -U app_user -d trapizzino -c "
 SELECT '--- USERS ---' AS table_name;
 SELECT * FROM users;
 SELECT '--- SPOTS ---' AS table_name;
