@@ -60,6 +60,7 @@ type PostRepository interface {
 	FindByID(id value_objects.ID) (*Post, error)
 	FindBySpotID(spotID value_objects.ID) ([]*Post, error)
 	FindByUserID(userID value_objects.ID) ([]*Post, error)
+	FindByUserIDAndMeshID(userID value_objects.ID, meshID value_objects.MeshID) ([]*Post, error)
 	Update(post *Post) error
 	Delete(id value_objects.ID) error
 }

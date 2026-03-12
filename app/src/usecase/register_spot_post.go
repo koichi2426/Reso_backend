@@ -95,12 +95,18 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 		return nil, fmt.Errorf("mesh id creation error: %w", err)
 	}
 
-	// 3. そのメッシュで、投稿者自身が過去に登録した Spot があるか確認する。
-	userSpotInMesh, err := i.spotRepo.FindSpotByMeshAndUser(ctx, meshID, user.ID)
+	// 3. そのメッシュで、投稿者自身が過去に投稿した Post があるか確認する。
+	userPostsInMesh, err := i.postRepo.FindByUserIDAndMeshID(user.ID, meshID)
 	if err != nil {
 		return nil, fmt.Errorf("repository error: %w", err)
 	}
-	hasExistingInfo := userSpotInMesh != nil
+	var latestUserPostInMesh *entities.Post
+	for _, p := range userPostsInMesh {
+		if latestUserPostInMesh == nil || p.PostedAt.After(latestUserPostInMesh.PostedAt) {
+			latestUserPostInMesh = p
+		}
+	}
+	hasExistingInfo := latestUserPostInMesh != nil
 
 	if input.Overwrite {
 		// overwrite=true の場合は Spot 所有者に依存せず、入力座標の Spot を起点に自分の投稿を置換する。
@@ -158,31 +164,13 @@ func (i *registerSpotPostInteractor) Execute(ctx context.Context, input Register
 		return output, nil
 	}
 
-	if userSpotInMesh != nil {
-		targetSpot := userSpotInMesh
-		if !input.Overwrite {
-			// ユーザーの過去登録がある場合で overwrite=false なら、投稿は作らず既存情報を返す。
-			posts, err := i.postRepo.FindBySpotID(targetSpot.ID)
-			if err != nil {
-				return nil, fmt.Errorf("post lookup error: %w", err)
-			}
-
-			var latestUserPost *entities.Post
-			for _, p := range posts {
-				if p.UserID.Value() != user.ID.Value() {
-					continue
-				}
-				if latestUserPost == nil || p.PostedAt.After(latestUserPost.PostedAt) {
-					latestUserPost = p
-				}
-			}
-
-			if latestUserPost != nil {
-				return i.presenter.OutputExisting(targetSpot, latestUserPost), nil
-			}
-
-			// ユーザー過去登録はあるが過去投稿がない場合は、入力座標ベースの通常フローに進む。
+	if !input.Overwrite && latestUserPostInMesh != nil {
+		// 過去に同メッシュ内のスポットへ投稿済みの場合、投稿は作らず既存情報を返す。
+		targetSpot, err := i.spotRepo.FindByID(ctx, latestUserPostInMesh.SpotID)
+		if err != nil {
+			return nil, fmt.Errorf("repository error: %w", err)
 		}
+		return i.presenter.OutputExisting(targetSpot, latestUserPostInMesh), nil
 	}
 
 	// 4. まだ自分の登録がない場合は、同一座標の Spot（他ユーザー登録含む）を探す。

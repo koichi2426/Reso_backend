@@ -154,6 +154,51 @@ func (r *PostRepository) Update(post *entities.Post) error {
 	return err
 }
 
+func (r *PostRepository) FindByUserIDAndMeshID(userID value_objects.ID, meshID value_objects.MeshID) ([]*entities.Post, error) {
+	query := `
+		SELECT p.id, p.user_id, p.spot_id, p.username, p.image_url, p.caption, p.posted_at
+		FROM posts p
+		JOIN spots s ON p.spot_id = s.id
+		WHERE p.user_id = $1 AND s.mesh_id = $2
+		ORDER BY p.posted_at DESC, p.id DESC`
+
+	rows, err := r.db.Query(query, userID.Value(), meshID.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var posts []*entities.Post
+	for rows.Next() {
+		var pid, uid, sid int
+		var userName, caption string
+		var imageURL sql.NullString
+		var postedAt sql.NullTime
+
+		if err := rows.Scan(&pid, &uid, &sid, &userName, &imageURL, &caption, &postedAt); err != nil {
+			return nil, err
+		}
+
+		pID, _ := value_objects.NewID(pid)
+		uID, _ := value_objects.NewID(uid)
+		sID, _ := value_objects.NewID(sid)
+		uname, _ := value_objects.NewUsername(userName)
+		imgURL, _ := value_objects.NewImageURL(imageURL.String)
+		capVO, _ := value_objects.NewCaption(caption)
+
+		posts = append(posts, &entities.Post{
+			ID:       pID,
+			UserID:   uID,
+			SpotID:   sID,
+			UserName: uname,
+			ImageURL: imgURL,
+			Caption:  capVO,
+			PostedAt: postedAt.Time,
+		})
+	}
+	return posts, nil
+}
+
 func (r *PostRepository) Delete(id value_objects.ID) error {
 	query := `DELETE FROM posts WHERE id = $1`
 	_, err := r.db.Exec(query, id.Value())

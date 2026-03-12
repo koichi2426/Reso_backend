@@ -100,6 +100,9 @@ func (m *GetUserSpotsMockPostRepository) FindByUserID(userID value_objects.ID) (
 }
 func (m *GetUserSpotsMockPostRepository) Update(post *entities.Post) error { return nil }
 func (m *GetUserSpotsMockPostRepository) Delete(id value_objects.ID) error { return nil }
+func (m *GetUserSpotsMockPostRepository) FindByUserIDAndMeshID(uID value_objects.ID, mID value_objects.MeshID) ([]*entities.Post, error) {
+	return nil, nil
+}
 
 type GetUserSpotsMockPresenter struct{}
 
